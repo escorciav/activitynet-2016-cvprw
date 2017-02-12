@@ -35,33 +35,30 @@ def generate_output(video_info, labels, length=16):
     clip of the video which features have been extracted.
     '''
     nb_frames = video_info['num_frames']
+    duration = video_info['duration']
     last_first_name = nb_frames - length + 1
 
-    start_frames = range(0, last_first_name, length)
-
-    # Check the output for each frame of the video
-    outputs = ['none'] * nb_frames
-    for i in range(nb_frames):
-        # Pass frame to temporal scale
-        t = i / float(nb_frames) * video_info['duration']
-        for annotation in video_info['annotations']:
-            if t >= annotation['segment'][0] and t <= annotation['segment'][1]:
-                outputs[i] = labels.index(annotation['label'])
-                label = annotation['label']
-                break
-
-    instances = []
-    for start_frame in start_frames:
-        # Obtain the label for this isntance and then its output
-        output = None
-
-        outs = outputs[start_frame:start_frame+length]
-        if outs.count(label) >= length / 2:
-            output = labels.index(label)
-        else:
-            output = labels[0]
-        instances.append(output)
-
+    clips = np.array([range(0, last_first_name, length),
+                      range(length, nb_frames, length)]).T
+    # Get annotations
+    num_annotations = len(video_info['annotations'])
+    intersection = np.zeros([num_annotations, clips.shape[0]])
+    target_labels = np.zeros(num_annotations, dtype=int)
+    for i, annotation in enumerate(video_info['annotations']):
+        t1 = annotation['segment'][0] * nb_frames / duration
+        t2 = annotation['segment'][1] * nb_frames / duration
+        # Length of intersection of clips with GT
+        it1 = np.maximum(clips[:, 0], t1)
+        it2 = np.minimum(clips[:, 1], t2)
+        intersection[i, :] = (it2 - it1 + 1.0).clip(0)
+        target_labels[i] = labels.index(annotation['label'])
+    # Assign label with max intersection (in the rare event of multiple
+    # matching annotations per clip)
+    idx = np.argmax(intersection, axis=0)
+    clip_labels = target_labels[idx]
+    # Background instances
+    clip_labels[np.max(intersection, axis=0) < length/2] = 0
+    instances = clip_labels.tolist()
     return instances
 
 
