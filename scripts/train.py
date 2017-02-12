@@ -1,15 +1,16 @@
 import argparse
 import os
-import sys
 
 import h5py
 
+from keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau
 from keras.layers import LSTM, BatchNormalization, Dense, Dropout, Input, TimeDistributed
 from keras.models import Model
 from keras.optimizers import RMSprop
 
 
-def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight):
+def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight, snapshot_freq, lrp_gain, lrp_patience, es_patience):
+    feature_size = 500
     print('Experiment ID {}'.format(experiment_id))
 
     print('number of cells: {}'.format(num_cells))
@@ -20,13 +21,28 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
     print('timesteps: {}'.format(timesteps))
     print('epochs: {}'.format(epochs))
     print('learning rate: {}'.format(lr))
-    print('loss weight for background class: {}\n'.format(loss_weight))
+    print('loss weight for background class: {}'.format(loss_weight))
 
     store_weights_root = 'data/model_snapshot'
     store_weights_file = 'lstm_activity_classification_{experiment_id}_e{epoch:03}.hdf5'
+    logging_file = os.path.join(store_weights_root, experiment_id + '.csv')
+    print('lr-plateau gain: {}'.format(lrp_gain))
+    print('lr-plateau patience: {}'.format(lrp_patience))
+    print('early-stopping patience: {}'.format(es_patience))
+    print('logging file: {}\n'.format(logging_file))
+    # Callbacks
+    csv_logger = CSVLogger(logging_file)
+    if lrp_gain > 0 or lrp_patience > 0:
+        lr_plateau = ReduceLROnPlateau(monitor='val_loss', factor=lrp_gain,
+                                       patience=lrp_patience, verbose=1,
+                                       mode='auto')
+    if es_patience > 0:
+        early_stop = EarlyStopping(monitor='val_loss', patience=es_patience,
+                                   verbose=1)
+    callbacks = [csv_logger, lr_plateau, early_stop]
 
     print('Compiling model')
-    input_features = Input(batch_shape=(batch_size, timesteps, 4096,), name='features')
+    input_features = Input(batch_shape=(batch_size, timesteps, feature_size,), name='features')
     input_normalized = BatchNormalization(name='normalization')(input_features)
     input_dropout = Dropout(p=dropout_probability)(input_normalized)
     lstms_inputs = [input_dropout]
@@ -71,10 +87,11 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
                   sample_weight=sample_weight,
                   verbose=1,
                   nb_epoch=1,
-                  shuffle=False)
+                  shuffle=False,
+                  callbacks=callbacks)
         print('Reseting model states')
         model.reset_states()
-        if (i % 5) == 0:
+        if (i % snapshot_freq) == 0:
             print('Saving snapshot...')
             save_name = store_weights_file.format(experiment_id=experiment_id, epoch=i)
             save_path = os.path.join(store_weights_root, save_name)
@@ -97,18 +114,10 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--epochs', type=int, dest='epochs', default=100, help='number of epochs to last the training (default: %(default)s)')
     parser.add_argument('-l', '--learning-rate', type=float, dest='learning_rate', default=1e-5, help='learning rate for training (default: %(default)s)')
     parser.add_argument('-w', '--loss-weight', type=float, dest='loss_weight', default=.3, help='value to weight the loss to the background samples (default: %(default)s)')
+    parser.add_argument('-glrp', '--gain-lr-plateau', type=float, dest='lrp_gain', default=0.1, help='Gain for learning rate on plateau')
+    parser.add_argument('-plrp', '--patience-lr-plateau', type=int, dest='lrp_patience', default=0, help='Patience for learning rate on plateau')
+    parser.add_argument('-pes', '--patience-early-stop', type=int, dest='es_patience', default=0, help='Patience for early stopping')
 
     args = parser.parse_args()
 
-    train(
-        args.experiment_id,
-        args.input_dataset,
-        args.num_cells,
-        args.num_layers,
-        args.dropout_probability,
-        args.batch_size,
-        args.timesteps,
-        args.epochs,
-        args.learning_rate,
-        args.loss_weight
-    )
+    train(**vars(args))

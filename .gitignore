@@ -46,3 +46,10 @@ config.py
 .isort.cfg
 
 venv
+
+# Bash script to setup environment
+activate*.sh
+deactivate*.sh
+
+# Logging-files
+*.csv
