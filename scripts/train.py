@@ -3,10 +3,17 @@ import os
 
 import h5py
 
-from keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau
+from keras.callbacks import (Callback, CSVLogger, EarlyStopping,
+                             ModelCheckpoint, ReduceLROnPlateau)
 from keras.layers import LSTM, BatchNormalization, Dense, Dropout, Input, TimeDistributed
 from keras.models import Model
 from keras.optimizers import RMSprop
+
+
+class ModelReset(Callback):
+    def on_epoch_end(self, epoch, logs, **kwargs):
+        print('reseting model states, end-epoch: ', epoch)
+        self.model.reset_states()
 
 
 def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight, snapshot_freq, lrp_gain, lrp_patience, es_patience, feature_size=4096):
@@ -23,15 +30,19 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
     print('loss weight for background class: {}'.format(loss_weight))
 
     store_weights_root = 'data/model_snapshot'
-    store_weights_file = 'lstm_activity_classification_{experiment_id}_e{epoch:03}.hdf5'
+    store_weights_file = 'lstm_activity_classification_' + str(experiment_id) + '_e{epoch:03d}.hdf5'
     logging_file = os.path.join(store_weights_root, experiment_id + '.tsv')
     print('lr-plateau gain: {}'.format(lrp_gain))
     print('lr-plateau patience: {}'.format(lrp_patience))
     print('early-stopping patience: {}'.format(es_patience))
     print('logging file: {}\n'.format(logging_file))
-    # Callbacks
-    callbacks = []
-    callbacks += [CSVLogger(logging_file, sep='\t')]
+
+    weight_format = os.path.join(store_weights_root, store_weights_file)
+    callbacks = [ModelCheckpoint(weight_format, save_weights_only=True,
+                                 verbose=1, period=snapshot_freq,
+                                 save_best_only=True),
+                 ModelReset()]
+    callbacks += [CSVLogger(logging_file, separator='\t')]
     if lrp_gain > 0 or lrp_patience > 0:
         callbacks += [ReduceLROnPlateau(monitor='val_loss', factor=lrp_gain,
                                         patience=lrp_patience, verbose=1,
@@ -77,24 +88,15 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
     print('Validation Output shape: {}'.format(Y_val.shape))
     print('Sample Weights shape: {}'.format(sample_weight.shape))
 
-    for i in range(1, epochs+1):
-        print('Epoch {}/{}'.format(i, epochs))
-        model.fit(X,
-                  Y,
-                  batch_size=batch_size,
-                  validation_data=(X_val, Y_val),
-                  sample_weight=sample_weight,
-                  verbose=2,
-                  nb_epoch=1,
-                  shuffle=False,
-                  callbacks=callbacks)
-        print('Reseting model states')
-        model.reset_states()
-        if (i % snapshot_freq) == 0:
-            print('Saving snapshot...')
-            save_name = store_weights_file.format(experiment_id=experiment_id, epoch=i)
-            save_path = os.path.join(store_weights_root, save_name)
-            model.save_weights(save_path)
+    model.fit(X,
+              Y,
+              batch_size=batch_size,
+              validation_data=(X_val, Y_val),
+              sample_weight=sample_weight,
+              verbose=1,
+              nb_epoch=epochs,
+              shuffle=False,
+              callbacks=callbacks)
 
 
 if __name__ == '__main__':
