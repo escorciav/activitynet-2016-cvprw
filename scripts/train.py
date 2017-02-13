@@ -9,8 +9,7 @@ from keras.models import Model
 from keras.optimizers import RMSprop
 
 
-def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight, snapshot_freq, lrp_gain, lrp_patience, es_patience):
-    feature_size = 500
+def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight, snapshot_freq, lrp_gain, lrp_patience, es_patience, feature_size=4096):
     print('Experiment ID {}'.format(experiment_id))
 
     print('number of cells: {}'.format(num_cells))
@@ -25,21 +24,21 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
 
     store_weights_root = 'data/model_snapshot'
     store_weights_file = 'lstm_activity_classification_{experiment_id}_e{epoch:03}.hdf5'
-    logging_file = os.path.join(store_weights_root, experiment_id + '.csv')
+    logging_file = os.path.join(store_weights_root, experiment_id + '.tsv')
     print('lr-plateau gain: {}'.format(lrp_gain))
     print('lr-plateau patience: {}'.format(lrp_patience))
     print('early-stopping patience: {}'.format(es_patience))
     print('logging file: {}\n'.format(logging_file))
     # Callbacks
-    csv_logger = CSVLogger(logging_file)
+    callbacks = []
+    callbacks += [CSVLogger(logging_file, sep='\t')]
     if lrp_gain > 0 or lrp_patience > 0:
-        lr_plateau = ReduceLROnPlateau(monitor='val_loss', factor=lrp_gain,
-                                       patience=lrp_patience, verbose=1,
-                                       mode='auto')
+        callbacks += [ReduceLROnPlateau(monitor='val_loss', factor=lrp_gain,
+                                        patience=lrp_patience, verbose=1,
+                                        mode='auto')]
     if es_patience > 0:
-        early_stop = EarlyStopping(monitor='val_loss', patience=es_patience,
-                                   verbose=1)
-    callbacks = [csv_logger, lr_plateau, early_stop]
+        callbacks += [EarlyStopping(monitor='val_loss', patience=es_patience,
+                                    verbose=1)]
 
     print('Compiling model')
     input_features = Input(batch_shape=(batch_size, timesteps, feature_size,), name='features')
@@ -85,7 +84,7 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
                   batch_size=batch_size,
                   validation_data=(X_val, Y_val),
                   sample_weight=sample_weight,
-                  verbose=1,
+                  verbose=2,
                   nb_epoch=1,
                   shuffle=False,
                   callbacks=callbacks)
@@ -112,8 +111,10 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--batch-size', type=int, dest='batch_size', default=256, help='batch size used to create the stateful dataset (default: %(default)s)')
     parser.add_argument('-t', '--timesteps', type=int, dest='timesteps', default=20, help='timesteps used to create the stateful dataset (default: %(default)s)')
     parser.add_argument('-e', '--epochs', type=int, dest='epochs', default=100, help='number of epochs to last the training (default: %(default)s)')
-    parser.add_argument('-l', '--learning-rate', type=float, dest='learning_rate', default=1e-5, help='learning rate for training (default: %(default)s)')
+    parser.add_argument('-l', '--learning-rate', type=float, dest='lr', default=1e-5, help='learning rate for training (default: %(default)s)')
     parser.add_argument('-w', '--loss-weight', type=float, dest='loss_weight', default=.3, help='value to weight the loss to the background samples (default: %(default)s)')
+    parser.add_argument('-fsz', '--feature-size', type=int, default=4096, help='Input dimension')
+    parser.add_argument('-sq', '--snapshot-freq', type=int, default=10, help='Control snapshot frequency')
     parser.add_argument('-glrp', '--gain-lr-plateau', type=float, dest='lrp_gain', default=0.1, help='Gain for learning rate on plateau')
     parser.add_argument('-plrp', '--patience-lr-plateau', type=int, dest='lrp_patience', default=0, help='Patience for learning rate on plateau')
     parser.add_argument('-pes', '--patience-early-stop', type=int, dest='es_patience', default=0, help='Patience for early stopping')
