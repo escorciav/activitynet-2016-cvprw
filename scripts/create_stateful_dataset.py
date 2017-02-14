@@ -10,7 +10,7 @@ from progressbar import ProgressBar
 from src.data import generate_output, import_labels, to_categorical
 
 
-def create_stateful_dataset(video_features_file, videos_info, labels, output_path, batch_size, timesteps, subset=None, features_size=4096, length=16):
+def create_stateful_dataset(video_features_file, videos_info, labels, output_path, batch_size, timesteps, subset=None, features_size=4096, length=16, hdf5_ds_name='c3d_features', sample_rate=2):
     output_size = 201
 
     f_video_features = h5py.File(video_features_file, 'r')
@@ -51,7 +51,7 @@ def create_stateful_dataset(video_features_file, videos_info, labels, output_pat
             min_pos = np.argmin(nb_clips_stack)
             sequence_stack[min_pos].append(video_id)
             # Note: Get number of C3D-features from video (subsample by 2)
-            nb_clips_stack[min_pos] += round(f_video_features[video_id]['c3d_features'].shape[0]/2)
+            nb_clips_stack[min_pos] += round(f_video_features[video_id][hdf5_ds_name].shape[0]/sample_rate)
             accumulative_clips_stack[min_pos].append(nb_clips_stack[min_pos])
 
 
@@ -76,7 +76,8 @@ def create_stateful_dataset(video_features_file, videos_info, labels, output_pat
             for video_id in sequence_stack[i]:
                 # Video features
                 # Note: Add dataset-name because HDF5 from ActivityNet-Challenge is a group
-                vid_features = f_video_features[video_id]['c3d_features'][slice(0, None, 2), ...]
+                sampling_slice = slice(0, None, sample_rate)
+                vid_features = f_video_features[video_id][hdf5_ds_name][sampling_slice, ...]
                 assert vid_features.shape[1] == features_size
                 nb_instances = vid_features.shape[0]
 
@@ -84,8 +85,9 @@ def create_stateful_dataset(video_features_file, videos_info, labels, output_pat
                 # Output
                 # Note: remove "v_" from video_id
                 # Update num_frames (it differs with ffmpeg version 😫)
-                videos_data[video_id[2:]]['num_frames'] = nb_instances*length + 1
-                output_classes = generate_output(videos_data[video_id[2:]], labels)
+                old_video_id = video_id[2:]
+                videos_data[old_video_id]['num_frames'] = nb_instances*length + 1
+                output_classes = generate_output(videos_data[old_video_id], labels)
                 assert nb_instances == len(output_classes)
 
 
@@ -132,6 +134,8 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--subset', type=str, dest='subset', default=None, choices=['training', 'validation'], help='Subset you want to create the stateful dataset (default: training and validation)')
     parser.add_argument('-cl', '--clip-size', type=int, dest='length', default=16, help='Temporal receptive field of C3D features')
     parser.add_argument('-fd', '--features-size', type=int, default=4096, help='C3D feature size')
+    parser.add_argument('-hdn', '--hdf5-ds-name', type=str, default='c3d_features', help='Name of HDF5 dataset with C3D features')
+    parser.add_argument('-fsr', '--sample-rate', type=int, default=1, help='Sample rate to read HDF5 dataset')
 
     args = parser.parse_args()
 

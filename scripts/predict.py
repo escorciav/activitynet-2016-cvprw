@@ -10,8 +10,8 @@ from keras.models import Model
 
 SUBSETS = ['training', 'validation', 'testing']
 
-def extract_predicted_outputs(experiment_id, input_dataset, num_cells, num_layers, epoch, output_path, subset=None, feature_size=4096):
-
+def extract_predicted_outputs(experiment_id, input_dataset, num_cells, num_layers, epoch, output_path, subset=None, feature_size=4096, hdf5_ds_name='c3d_features', sample_rate=1):
+    compression_flags = dict(compression="gzip", compression_opts=9)
     if subset == None:
         subsets = SUBSETS[1:]
     else:
@@ -20,7 +20,7 @@ def extract_predicted_outputs(experiment_id, input_dataset, num_cells, num_layer
     weights_path = 'data/model_snapshot/lstm_activity_classification_{experiment_id}_e{nb_epoch:03d}.hdf5'.format(
         experiment_id=experiment_id, nb_epoch=epoch
     )
-    store_file = 'predictions_{experiment_id}.hdf5'.format(
+    store_file = 'predictions_{experiment_id}_{nb_epoch}.hdf5'.format(
         experiment_id=experiment_id, nb_epoch=epoch
     )
     store_path = os.path.join(output_path, store_file)
@@ -60,14 +60,16 @@ def extract_predicted_outputs(experiment_id, input_dataset, num_cells, num_layer
         for video_id in videos:
             progbar.update(count)
             # Note: features provided by ActivityNet challenge (subsample by 2)
-            video_features = h5_dataset[video_id]['c3d_features'][slice(0, None, 2), ...]
+            sampling_slice = slice(0, None, sample_rate)
+            video_features = h5_dataset[video_id][hdf5_ds_name][sampling_slice, ...]
             nb_instances = video_features.shape[0]
             video_features = video_features.reshape(nb_instances, 1, feature_size)
             model.reset_states()
             Y = model.predict(video_features, batch_size=1)
             Y = Y.reshape(nb_instances, 201)
 
-            output_subset.create_dataset(video_id, data=Y)
+            output_subset.create_dataset(video_id, data=Y, chunks=True,
+                                         **compression_flags)
             count += 1
 
         progbar.finish()
@@ -89,6 +91,8 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--output', type=str, dest='output_path', default='data/dataset', help='path to store the output file (default: %(default)s)')
     parser.add_argument('-s', '--subset', type=str, dest='subset', default=None, nargs='+', choices=SUBSETS, help='Subset you want to predict the output (default: validation and testing)')
     parser.add_argument('-fsz', '--feature-size', type=int, default=4096, help='Input dimension')
+    parser.add_argument('-hdn', '--hdf5-ds-name', type=str, default='c3d_features', help='Name of HDF5 dataset with C3D features')
+    parser.add_argument('-fsr', '--sample-rate', type=int, default=1, help='Sample rate to read HDF5 dataset')
 
     args = parser.parse_args()
 

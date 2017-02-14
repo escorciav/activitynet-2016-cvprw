@@ -16,7 +16,7 @@ class ModelReset(Callback):
         self.model.reset_states()
 
 
-def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight, snapshot_freq, lrp_gain, lrp_patience, es_patience, feature_size=4096):
+def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probability, batch_size, timesteps, epochs, lr, loss_weight, snapshot_freq, lrp_gain, lrp_patience, es_patience, feature_size=4096, hdf5_ds_name='c3d_features'):
     print('Experiment ID {}'.format(experiment_id))
 
     print('number of cells: {}'.format(num_cells))
@@ -38,9 +38,9 @@ def train(experiment_id, input_dataset, num_cells, num_layers, dropout_probabili
     print('logging file: {}\n'.format(logging_file))
 
     weight_format = os.path.join(store_weights_root, store_weights_file)
-    callbacks = [ModelCheckpoint(weight_format, save_weights_only=True,
-                                 verbose=1, period=snapshot_freq,
-                                 save_best_only=True),
+    callbacks = [ModelCheckpoint(weight_format, monitor='val_loss',
+                                 save_weights_only=True, verbose=1,
+                                 period=snapshot_freq, save_best_only=True),
                  ModelReset()]
     callbacks += [CSVLogger(logging_file, separator='\t')]
     if lrp_gain > 0 or lrp_patience > 0:
@@ -116,10 +116,11 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--learning-rate', type=float, dest='lr', default=1e-5, help='learning rate for training (default: %(default)s)')
     parser.add_argument('-w', '--loss-weight', type=float, dest='loss_weight', default=.3, help='value to weight the loss to the background samples (default: %(default)s)')
     parser.add_argument('-fsz', '--feature-size', type=int, default=4096, help='Input dimension')
-    parser.add_argument('-sq', '--snapshot-freq', type=int, default=10, help='Control snapshot frequency')
+    parser.add_argument('-sfq', '--snapshot-freq', type=int, default=5, help='Control snapshot frequency')
     parser.add_argument('-glrp', '--gain-lr-plateau', type=float, dest='lrp_gain', default=0.1, help='Gain for learning rate on plateau')
     parser.add_argument('-plrp', '--patience-lr-plateau', type=int, dest='lrp_patience', default=0, help='Patience for learning rate on plateau')
     parser.add_argument('-pes', '--patience-early-stop', type=int, dest='es_patience', default=0, help='Patience for early stopping')
+    parser.add_argument('-hdn', '--hdf5-ds-name', type=str, default='c3d_features', help='Name of HDF5 dataset with C3D features')
 
     args = parser.parse_args()
 
