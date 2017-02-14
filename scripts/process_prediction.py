@@ -2,27 +2,33 @@ import argparse
 import copy
 import json
 import os
-import sys
 
 import h5py
-import numpy as np
 from progressbar import ProgressBar
 
 from src.data import import_labels
 from src.processing import activity_localization, get_classification, smoothing
 
+SUBSETS = ['training', 'validation', 'testing']
 
-def process_prediction(experiment_id, predictions_path, output_path, smoothing_k, activity_threshold, subset=None):
+
+def template_submission(subset):
+    dict_template = dict(version="VERSION 1.3", results={},
+                         external_data={"details": subset, "used": False})
+    return dict_template
+
+
+def process_prediction(experiment_id, predictions_path, output_path, smoothing_k, activity_threshold, subset=None, epoch=0):
     clip_length = 16.
 
     if subset == None:
-        subsets = ['validation', 'testing']
+        subsets = SUBSETS[1:]
     else:
-        subsets = [subset]
+        subsets = subset
 
     predictions_file = os.path.join(
         predictions_path,
-        'predictions_{experiment_id}.hdf5'.format(experiment_id=experiment_id)
+        'predictions_{experiment_id}_{epoch}.hdf5'.format(experiment_id=experiment_id, epoch=epoch)
     )
 
     with open('dataset/labels.txt', 'r') as f:
@@ -36,17 +42,16 @@ def process_prediction(experiment_id, predictions_path, output_path, smoothing_k
         subset_predictions = f_predictions[subset]
 
         progbar = ProgressBar(max_value=len(subset_predictions.keys()))
-        with open('dataset/templates/results_{}.json'.format(subset), 'r') as f:
-            results_classification = json.load(f)
-        results_detection = copy.deepcopy(results_classification)
+        results_classification = template_submission(subset)
+        results_detection = template_submission(subset)
 
         count = 0
         progbar.update(0)
         for video_id in subset_predictions.keys():
+            old_video_id = video_id[2:]
             prediction = subset_predictions[video_id][...]
-            video_info = videos_info[video_id]
+            video_info = videos_info[old_video_id]
             fps = float(video_info['num_frames']) / video_info['duration']
-            nb_clips = prediction.shape[0]
 
             # Post processing to obtain the classification
             labels_idx, scores = get_classification(prediction, k=5)
@@ -58,7 +63,7 @@ def process_prediction(experiment_id, predictions_path, output_path, smoothing_k
                         'score': score,
                         'label': label
                     })
-            results_classification['results'][video_id] = result_classification
+            results_classification['results'][old_video_id] = result_classification
 
             # Post Processing to obtain the detection
             prediction_smoothed = smoothing(prediction, k=smoothing_k)
@@ -77,7 +82,7 @@ def process_prediction(experiment_id, predictions_path, output_path, smoothing_k
                     ],
                     'label': label
                 })
-            results_detection['results'][video_id] = result_detection
+            results_detection['results'][old_video_id] = result_detection
 
             count += 1
             progbar.update(count)
@@ -85,16 +90,16 @@ def process_prediction(experiment_id, predictions_path, output_path, smoothing_k
 
         classification_output_file = os.path.join(
             output_path,
-            'results_classification_{}_{}.json'.format(experiment_id, subset)
+            'results_classification_{}_{}_{}.json'.format(experiment_id, subset, epoch)
         )
         detection_output_file = os.path.join(
             output_path,
-            'results_detection_{}_{}.json'.format(experiment_id, subset)
+            'results_detection_{}_{}_{}.json'.format(experiment_id, subset, epoch)
         )
         with open(classification_output_file, 'w') as f:
-            json.dump(results_classification, f)
+            json.dump(results_classification, f, sort_keys=True, indent=4)
         with open(detection_output_file, 'w') as f:
-            json.dump(results_detection, f)
+            json.dump(results_detection, f, sort_keys=True, indent=4)
 
     f_predictions.close()
 
@@ -109,15 +114,9 @@ if __name__ == '__main__':
     parser.add_argument('-k', type=int, dest='smoothing_k', default=5, help='Smoothing factor at post-processing (default: %(default)s)')
     parser.add_argument('-t', type=float, dest='activity_threshold', default=.2, help='Activity threshold at post-processing (default: %(default)s)')
 
-    parser.add_argument('-s', '--subset', type=str, dest='subset', default=None, choices=['validation', 'testing'], help='Subset you want to post-process the output (default: validation and testing)')
+    parser.add_argument('-s', '--subset', type=str, dest='subset', default=None, nargs='+', choices=SUBSETS, help='Subset you want to predict the output (default: validation and testing)')
+    parser.add_argument('-e', '--epoch', dest='epoch', default='0', help='Epoch identifier (no formatting behind scenes!)')
 
     args = parser.parse_args()
 
-    process_prediction(
-        args.experiment_id,
-        args.predictions_path,
-        args.output_path,
-        args.smoothing_k,
-        args.activity_threshold,
-        args.subset
-    )
+    process_prediction(**vars(args))

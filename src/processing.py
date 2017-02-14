@@ -8,7 +8,7 @@ def get_classification(sequence_class_prob, k=3):
     class_prob = np.mean(sequence_class_prob, axis=0)
     labels_index = np.argsort(class_prob[1:])[::-1] + 1
     scores = class_prob[labels_index] / np.sum(class_prob[1:])
-    return labels_index[:k], scores[:k]
+    return labels_index[:k].tolist(), scores[:k].tolist()
 
 def smoothing(x, k=5):
     ''' Applies a mean filter to an input sequence. The k value specifies the window
@@ -38,7 +38,7 @@ def activity_localization(sequence_class_prob, activity_threshold=.2):
     padded = np.pad(activity_tag, pad_width=1, mode='constant')
     dif = padded[1:] - padded [:-1]
 
-    indexes = np.arange(dif.size).astype(np.float32)
+    indexes = np.arange(dif.size).astype(np.int32)
     startings = indexes[dif==1]
     endings = indexes[dif==-1]
 
@@ -49,6 +49,6 @@ def activity_localization(sequence_class_prob, activity_threshold=.2):
 
     for s, e in zip(startings, endings):
         activities_idx.append(activity_idx)
-        scores.append(np.mean(sequence_class_prob[s:e,activity_idx]))
+        scores.append(np.mean(sequence_class_prob[s:e,activity_idx]).item())
 
     return activities_idx, startings, endings, scores
