@@ -14,6 +14,8 @@ def smoothing(x, k=5):
     ''' Applies a mean filter to an input sequence. The k value specifies the window
     size. window size = 2*k
     '''
+    if k == 0:
+        return x
     l = len(x)
     s = np.arange(-k, l-k)
     e = np.arange(k, l+k)

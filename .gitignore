@@ -52,4 +52,5 @@ activate*.sh
 deactivate*.sh
 
 # Logging-files
-*.csv
+*.tsv
+*.json

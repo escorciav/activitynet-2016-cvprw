@@ -1,5 +1,4 @@
 import argparse
-import copy
 import json
 import os
 
@@ -21,7 +20,7 @@ def template_submission(subset):
 def process_prediction(experiment_id, predictions_path, output_path, smoothing_k, activity_threshold, subset=None, epoch=0):
     clip_length = 16.
 
-    if subset == None:
+    if subset is None:
         subsets = SUBSETS[1:]
     else:
         subsets = subset
@@ -94,7 +93,7 @@ def process_prediction(experiment_id, predictions_path, output_path, smoothing_k
         )
         detection_output_file = os.path.join(
             output_path,
-            'results_detection_{}_{}_{}.json'.format(experiment_id, subset, epoch)
+            'results_detection_{}_{}_{}_k-{}_g-{}.json'.format(experiment_id, subset, epoch, smoothing_k, activity_threshold)
         )
         with open(classification_output_file, 'w') as f:
             json.dump(results_classification, f, sort_keys=True, indent=4)
